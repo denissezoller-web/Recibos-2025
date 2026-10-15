@@ -1,0 +1,832 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#2F5496">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>GPC&S — Receipt Log 2025</title>
+<script src="https://cdn.jsdelivr.net/npm/exceljs@4.4.0/dist/exceljs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+<style>
+  :root{
+    --pink:#f8bbd0; --pink-text:#880e4f;
+    --green:#c8e6c9; --green-text:#1b5e20;
+    --gray:#eceff1; --accent:#37474f; --line:#cfd8dc;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;margin:0;background:#f5f6f7;color:#222;}
+  header{background:var(--accent);color:#fff;padding:14px 16px;position:sticky;top:0;z-index:10;}
+  header h1{font-size:17px;margin:0;}
+  header p{margin:2px 0 0;font-size:12px;opacity:.85;}
+  .wrap{padding:12px;max-width:900px;margin:0 auto;}
+  .card{background:#fff;border-radius:10px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.08);}
+  .row{display:flex;gap:8px;flex-wrap:wrap;}
+  button{cursor:pointer;border:none;border-radius:8px;padding:10px 14px;font-size:14px;font-weight:600;}
+  .btn-primary{background:var(--accent);color:#fff;flex:1;}
+  .btn-secondary{background:#cfd8dc;color:#263238;flex:1;}
+  .btn-small{padding:6px 10px;font-size:12px;font-weight:500;background:#e0e0e0;}
+  .btn-danger{background:#ffcdd2;color:#b71c1c;}
+  input,select,textarea{width:100%;padding:9px;border:1px solid var(--line);border-radius:7px;font-size:14px;margin-top:4px;}
+  label{font-size:12px;color:#546e7a;font-weight:600;display:block;margin-top:10px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;}
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th,td{padding:6px 4px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;}
+  th{background:#f0f2f3;position:sticky;top:0;}
+  .month-block{margin-bottom:18px;}
+  .month-title{font-size:15px;font-weight:700;color:var(--accent);margin:10px 0 4px;border-bottom:2px solid var(--accent);padding-bottom:3px;}
+  .cat-title{background:var(--gray);font-weight:700;}
+  .subtotal-row{background:#eef1f2;font-weight:700;}
+  .flag-pink{background:var(--pink)!important;color:var(--pink-text);}
+  .flag-green{background:var(--green)!important;color:var(--green-text);}
+  .pill{display:inline-block;font-size:10px;padding:2px 6px;border-radius:10px;background:#eee;margin-left:4px;}
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:flex-end;justify-content:center;z-index:100;}
+  .modal-bg.show{display:flex;}
+  .modal{background:#fff;width:100%;max-width:480px;border-radius:16px 16px 0 0;padding:18px;max-height:90vh;overflow-y:auto;}
+  .modal h3{margin-top:0;}
+  .split-question{text-align:center;padding:20px 0;}
+  .split-question button{width:45%;margin:6px 2%;padding:14px;font-size:16px;}
+  small.hint{color:#78909c;font-size:11px;display:block;margin-top:4px;}
+  .loading{text-align:center;padding:20px;color:var(--accent);font-weight:600;}
+  .toolbar{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap;}
+  #msgBox{position:fixed;left:8px;right:8px;top:70px;z-index:200;display:none;padding:12px 14px;border-radius:10px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(0,0,0,.25);background:#263238;color:#fff;}
+  #msgBox.err{background:#b71c1c;}
+  #jsStatus{display:inline-block;margin-top:4px;font-size:11px;padding:2px 8px;border-radius:10px;background:#ffcdd2;color:#b71c1c;font-weight:700;}
+  #jsStatus.ok{background:#c8e6c9;color:#1b5e20;}
+  #storageWarning{background:#ffe0e0;color:#8a1c1c;padding:8px 10px;border-radius:8px;font-size:12px;margin-bottom:10px;display:none;}
+  #apiKeyWarning{background:#fff3cd;color:#7a5b00;padding:8px 10px;border-radius:8px;font-size:12px;margin-bottom:10px;display:none;}
+  .checkbox-cell{text-align:center;}
+  input[type=checkbox]{width:auto;margin:0;}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>GPC&S GmbH — Receipt Log 2025</h1>
+  <p>No bank statements yet · organized by month, in order</p>
+  <span id="jsStatus">✗ Script NOT running</span>
+</header>
+
+<div id="msgBox" onclick="this.style.display='none'"></div>
+
+<!-- MODAL: ask for a line of text (replaces prompt()) -->
+<div class="modal-bg" id="textModalBg">
+  <div class="modal">
+    <h3 id="textModalTitle">Enter text</h3>
+    <input type="text" id="textModalInput" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="row" style="margin-top:16px;">
+      <button class="btn-secondary" onclick="closeTextModal()">Cancel</button>
+      <button class="btn-primary" onclick="confirmTextModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+  <div id="apiKeyWarning">⚠️ Your Anthropic API key is not set. Tap the <b>🔑 API key</b> button below and paste it. Automatic reading (OCR) won't work until then.</div>
+  <div id="storageWarning">⚠️ This browser is not saving data from this file. Receipts will be lost when you close the page. Export Excel / Download All Photos often, or open the file from a different app or browser.</div>
+
+  <div class="card">
+    <div class="row">
+      <button class="btn-primary" onclick="document.getElementById('camInput').click()">📷 Take photo</button>
+      <button class="btn-secondary" onclick="document.getElementById('galInput').click()">🖼️ Choose from gallery</button>
+    </div>
+    <input type="file" accept="image/*" capture="environment" id="camInput" style="display:none" onchange="handleFile(event)">
+    <input type="file" accept="image/*" id="galInput" style="display:none" onchange="handleFile(event)">
+    <div class="toolbar">
+      <button class="btn-small" onclick="openManualModal()">✍️ Add manually</button>
+      <button class="btn-small" onclick="exportExcel()">📊 Export Excel</button>
+      <button class="btn-small" onclick="downloadAllPhotos()">🗂️ Download All Photos</button>
+      <button class="btn-small" onclick="renameCategory19()">🏷️ Name category 19</button>
+      <button class="btn-small" onclick="setApiKey()">🔑 API key</button>
+      <button class="btn-small" onclick="backupData()">💾 Backup</button>
+      <button class="btn-small" onclick="document.getElementById('restoreInput').click()">📥 Restore</button>
+      <input type="file" accept=".json,application/json" id="restoreInput" style="display:none" onchange="restoreData(event)">
+    </div>
+  </div>
+
+  <div id="loadingBox" class="card loading" style="display:none;">Reading receipt with AI…</div>
+
+  <div id="tableContainer"></div>
+
+</div>
+
+<!-- MODAL: review / confirm receipt data -->
+<div class="modal-bg" id="editModalBg">
+  <div class="modal">
+    <h3>Review receipt data</h3>
+    <label>Date</label>
+    <input type="date" id="f_fecha">
+    <label>Card / payment method</label>
+    <select id="f_tarjeta" onchange="onCardChange()">
+      <option value="">-- select --</option>
+      <option value="6320">6320</option>
+      <option value="6450">6450</option>
+      <option value="0195">0195 (Visa CAD)</option>
+      <option value="1621">1621</option>
+      <option value="5409">5409</option>
+      <option value="8845">8845</option>
+      <option value="Cash">Cash</option>
+      <option value="OTHER">Other / unknown card</option>
+    </select>
+    <input type="text" id="f_tarjeta_otra" placeholder="Specify card" style="display:none;margin-top:6px;">
+    <label>Concept</label>
+    <input type="text" id="f_concept" placeholder="e.g. Nooch, Uster">
+    <small class="hint">Keep it short: vendor name + city. Not a full description. The photo file will be named after this concept.</small>
+    <div class="grid2">
+      <div>
+        <label>Amount</label>
+        <input type="number" step="0.01" id="f_monto">
+      </div>
+      <div>
+        <label>Currency</label>
+        <select id="f_moneda">
+          <option value="CHF">CHF</option>
+          <option value="EUR">EUR</option>
+          <option value="USD">USD</option>
+          <option value="MXN">MXN</option>
+          <option value="CAD">CAD</option>
+        </select>
+      </div>
+    </div>
+    <label>Category</label>
+    <select id="f_categoria" onchange="onCategoryChange()"></select>
+    <small class="hint" id="f_categoria_hint"></small>
+    <label>Note <span style="font-weight:400;color:#90a4ae;">(optional)</span></label>
+    <input type="text" id="f_note" placeholder="Extra detail">
+    <div class="row" style="margin-top:16px;">
+      <button class="btn-secondary" onclick="closeEditModal()">Cancel</button>
+      <button class="btn-primary" onclick="saveReceipt()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: explicit 1/5.5% split question -->
+<div class="modal-bg" id="splitModalBg">
+  <div class="modal">
+    <h3>Does the 1/5.5% split apply?</h3>
+    <div class="split-question">
+      <button class="btn-secondary" onclick="resolveSplit(false)">No</button>
+      <button class="btn-primary" onclick="resolveSplit(true)">Yes</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: exact amount the split applies to -->
+<div class="modal-bg" id="splitAmountModalBg">
+  <div class="modal">
+    <h3>Amount the split applies to</h3>
+    <p style="font-size:13px;color:#607d8b;">You decide manually which part of the receipt goes into the 1/5.5% split. The full amount is shown by default — edit it if only part applies.</p>
+    <label>Amount</label>
+    <input type="number" step="0.01" id="f_splitAmount">
+    <div class="row" style="margin-top:16px;">
+      <button class="btn-secondary" onclick="closeSplitAmountModal()">Cancel</button>
+      <button class="btn-primary" onclick="confirmSplitAmount()">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============ CONFIG ============ */
+// Paste your Anthropic API key below. It is only used to call api.anthropic.com directly from your phone.
+// Shows any script error on screen instead of failing silently.
+function showMsg(text, isErr){
+  const b = document.getElementById("msgBox");
+  if(!b) return;
+  b.textContent = text + "  (tap to close)";
+  b.className = isErr ? "err" : "";
+  b.style.display = "block";
+}
+window.onerror = function(msg, src, line){ showMsg("Script error: " + msg + " (line " + line + ")", true); };
+
+let _textCb = null;
+function askText(title, current, cb){
+  _textCb = cb;
+  document.getElementById("textModalTitle").textContent = title;
+  document.getElementById("textModalInput").value = current || "";
+  document.getElementById("textModalBg").classList.add("show");
+}
+function closeTextModal(){ document.getElementById("textModalBg").classList.remove("show"); _textCb = null; }
+function confirmTextModal(){
+  const v = document.getElementById("textModalInput").value;
+  const cb = _textCb;
+  closeTextModal();
+  if(cb) cb(v);
+}
+
+// Safe storage: some phone browsers block localStorage when a file is opened directly.
+// If that happens the app still works, but data is only kept until the page is closed.
+const store = (function(){
+  let ok = false;
+  const mem = {};
+  try{ localStorage.setItem("__t","1"); localStorage.removeItem("__t"); ok = true; }catch(e){}
+  return {
+    ok: ok,
+    get: function(k){ try{ return ok ? localStorage.getItem(k) : (k in mem ? mem[k] : null); }catch(e){ return (k in mem ? mem[k] : null); } },
+    set: function(k,v){ if(ok){ localStorage.setItem(k,v); } else { mem[k] = v; } }
+  };
+})();
+
+// The API key is entered with the "API key" button (stored on this device), not edited in the code.
+let API_KEY = store.get("gpcs_api_key") || "";
+function setApiKey(){
+  askText("Paste your Anthropic API key", "", function(k){
+    if(k && k.trim()){
+      API_KEY = k.trim();
+      try{ store.set("gpcs_api_key", API_KEY); }catch(e){}
+      document.getElementById("apiKeyWarning").style.display = "none";
+      showMsg("API key saved.", false);
+    }
+  });
+}
+const CLAUDE_MODEL = "claude-haiku-4-5-20251001"; // fast and inexpensive for receipt OCR
+
+// Separate storage keys from the 2026 app so the two logs never mix.
+const STORAGE_KEY = "gpcs_2025_receipts_v1";
+const CAT19_KEY = "gpcs_2025_cat19_name";
+
+const CATEGORIES = [
+  "Business Development",
+  "Travel",
+  "Gas",
+  "Parking",
+  "Client Gift",
+  "Hotels",
+  "Flights",
+  "Office Supply",
+  "Administrative Expense",
+  "Operating Expense",
+  "1/5.5%",
+  "Company Income",
+  "Internal Transfer",
+  "Tax (Steuer)",
+  "Insurance Payments",
+  "Fines",
+  "Retreat",
+  "__CAT19__",
+  "Excluded"
+];
+
+const PINK_CARDS = ["1621","5409","8845"];
+const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+/* ============ STATE ============ */
+let receipts = JSON.parse(store.get(STORAGE_KEY) || "[]");
+let cat19Name = store.get(CAT19_KEY) || "Unnamed";
+let editingId = null;
+let pendingSplitAmountEntry = null;
+
+function persist(){
+  try{
+    store.set(STORAGE_KEY, JSON.stringify(receipts));
+  }catch(e){
+    showMsg("Storage is nearly full. Use 'Download All Photos' now to save your photos to a file, then delete some entries or clear old photos to keep going.", true);
+  }
+}
+
+function catLabel(c){ return c === "__CAT19__" ? cat19Name : c; }
+
+/* ============ INIT ============ */
+if("serviceWorker" in navigator){ try{ navigator.serviceWorker.register("sw.js"); }catch(e){} }
+try{ if(navigator.storage && navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+window.onload = () => {
+  const st = document.getElementById("jsStatus");
+  if(st){ st.textContent = "✓ Script running"; st.className = "ok"; }
+  if(!API_KEY){
+    document.getElementById("apiKeyWarning").style.display = "block";
+  }
+  if(!store.ok){
+    document.getElementById("storageWarning").style.display = "block";
+  }
+  const sel = document.getElementById("f_categoria");
+  sel.innerHTML = CATEGORIES.map(c => `<option value="${c}">${catLabel(c)}</option>`).join("");
+  render();
+};
+
+function renameCategory19(){
+  askText("Name for category 19", cat19Name, function(name){
+    if(name){
+      cat19Name = name;
+      store.set(CAT19_KEY, name);
+      document.getElementById("f_categoria").innerHTML = CATEGORIES.map(c => `<option value="${c}">${catLabel(c)}</option>`).join("");
+      render();
+    }
+  });
+}
+
+/* ============ CAPTURE / READING ============ */
+
+// Shrinks a photo to a small JPEG so it's light to keep on the phone (localStorage), while staying
+// legible enough for both the AI reading and a later human re-check.
+function compressImage(dataUrl, maxDim, quality){
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      let { width, height } = img;
+      if(width > maxDim || height > maxDim){
+        if(width >= height){ height = Math.round(height * (maxDim / width)); width = maxDim; }
+        else { width = Math.round(width * (maxDim / height)); height = maxDim; }
+      }
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => resolve(dataUrl);
+    img.src = dataUrl;
+  });
+}
+
+let pendingPhoto = null; // compressed photo waiting to be attached to the entry being edited
+
+function handleFile(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = async () => {
+    // Two versions: a slightly larger one for the AI to read, a smaller one to keep in storage.
+    const forAI = await compressImage(reader.result, 1400, 0.7);
+    pendingPhoto = await compressImage(reader.result, 900, 0.55);
+    readReceiptWithAI(forAI, "image/jpeg");
+  };
+  reader.readAsDataURL(file);
+  ev.target.value = "";
+}
+
+async function readReceiptWithAI(dataUrl, mediaType){
+  if(!API_KEY){
+    showMsg("Your Anthropic API key is missing. Tap the 'API key' button to paste it, or use 'Add manually'.", true);
+    return;
+  }
+  document.getElementById("loadingBox").style.display = "block";
+  const base64 = dataUrl.split(",")[1];
+  try{
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": API_KEY,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 400,
+        messages: [{
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: mediaType || "image/jpeg", data: base64 } },
+            { type: "text", text: "Read this receipt/ticket (it may be in German, English or Spanish). Return ONLY valid JSON, no extra text or markdown, in this exact shape: {\"fecha\":\"YYYY-MM-DD\",\"monto\":0.00,\"moneda\":\"CHF|EUR|USD|MXN|CAD\",\"concept\":\"short vendor name, city\",\"tarjeta_ultimos4\":\"last 4 digits if visible, else empty\"}. The 'concept' field MUST be short and concise — just the vendor/business name plus city, like 'Nooch, Uster' or 'Uber, Wien' or 'SBB Bahnhof, Zurich'. Never a full sentence or itemized description of what was purchased. If a field is not legible, use null for it." }
+          ]
+        }]
+      })
+    });
+    const data = await resp.json();
+    if(!resp.ok){
+      throw new Error(data?.error?.message || "API error");
+    }
+    const text = data.content?.[0]?.text || "{}";
+    const clean = text.replace(/```json|```/g, "").trim();
+    const parsed = JSON.parse(clean);
+    document.getElementById("loadingBox").style.display = "none";
+    openEditModal({
+      fecha: parsed.fecha || "",
+      tarjeta: parsed.tarjeta_ultimos4 || "",
+      concept: parsed.concept || "",
+      monto: parsed.monto || "",
+      moneda: parsed.moneda || "CHF",
+      categoria: "",
+      note: "",
+      verificado: false,
+      photo: pendingPhoto
+    });
+  }catch(err){
+    document.getElementById("loadingBox").style.display = "none";
+    showMsg("Couldn't read the receipt automatically (" + err.message + "). You can fill it in manually.", true);
+    openEditModal({fecha:"",tarjeta:"",concept:"",monto:"",moneda:"CHF",categoria:"",note:"",verificado:false,photo:pendingPhoto});
+  }
+}
+
+function openManualModal(){
+  openEditModal({fecha:"",tarjeta:"",concept:"",monto:"",moneda:"CHF",categoria:"",note:"",verificado:false,photo:null});
+}
+
+/* ============ EDIT MODAL ============ */
+function openEditModal(entry, id){
+  editingId = id || null;
+  document.getElementById("f_fecha").value = entry.fecha || "";
+  const knownCards = ["6320","6450","0195","1621","5409","8845","Cash"];
+  if(entry.tarjeta && knownCards.includes(entry.tarjeta)){
+    document.getElementById("f_tarjeta").value = entry.tarjeta;
+    document.getElementById("f_tarjeta_otra").style.display = "none";
+  } else if(entry.tarjeta){
+    document.getElementById("f_tarjeta").value = "OTHER";
+    document.getElementById("f_tarjeta_otra").style.display = "block";
+    document.getElementById("f_tarjeta_otra").value = entry.tarjeta;
+  } else {
+    document.getElementById("f_tarjeta").value = "";
+    document.getElementById("f_tarjeta_otra").style.display = "none";
+  }
+  document.getElementById("f_concept").value = entry.concept || "";
+  document.getElementById("f_monto").value = entry.monto || "";
+  document.getElementById("f_moneda").value = entry.moneda || "CHF";
+  document.getElementById("f_categoria").value = entry.categoria || CATEGORIES[0];
+  document.getElementById("f_note").value = entry.note || "";
+  onCardChange();
+  document.getElementById("editModalBg").classList.add("show");
+  window._entryBeingEdited = entry;
+}
+
+function closeEditModal(){
+  document.getElementById("editModalBg").classList.remove("show");
+}
+
+function onCardChange(){
+  const card = document.getElementById("f_tarjeta").value;
+  document.getElementById("f_tarjeta_otra").style.display = (card === "OTHER") ? "block" : "none";
+  const hint = document.getElementById("f_categoria_hint");
+  const catSel = document.getElementById("f_categoria");
+
+  if(card === "6320"){
+    catSel.value = "1/5.5%";
+    hint.textContent = "Card 6320: category fixed to 1/5.5%. The split is always confirmed with the explicit question before it's calculated.";
+  } else if(PINK_CARDS.includes(card)){
+    hint.textContent = "Card flagged for review (pink) — unknown/pending clarification.";
+  } else if(card === "0195"){
+    hint.textContent = "Canadian card 0195: this will go to the separate 'Canadian Card Payments' sheet, not the monthly sheets.";
+  } else if(card === "Cash"){
+    hint.textContent = "Cash: you decide the category (select 1/5.5% below if it applies).";
+  } else {
+    hint.textContent = "";
+  }
+}
+
+function onCategoryChange(){
+  // the split is only confirmed on SAVE, so it doesn't interrupt while editing
+}
+
+function saveReceipt(){
+  let tarjeta = document.getElementById("f_tarjeta").value;
+  if(tarjeta === "OTHER") tarjeta = document.getElementById("f_tarjeta_otra").value.trim() || "Unknown";
+
+  const prev = window._entryBeingEdited || {};
+  const entry = {
+    id: editingId || (Date.now() + Math.random().toString(36).slice(2)),
+    fecha: document.getElementById("f_fecha").value,
+    tarjeta: tarjeta,
+    concept: document.getElementById("f_concept").value.trim(),
+    monto: parseFloat(document.getElementById("f_monto").value) || 0,
+    moneda: document.getElementById("f_moneda").value,
+    categoria: document.getElementById("f_categoria").value,
+    note: document.getElementById("f_note").value.trim(),
+    verificado: prev.verificado || false,
+    splitAmount: prev.splitAmount || null,
+    reimbursement: prev.reimbursement || null,
+    splitResuelto: prev.splitResuelto || false,
+    photo: prev.photo || null
+  };
+
+  closeEditModal();
+
+  if(entry.categoria === "1/5.5%"){
+    pendingSplitAmountEntry = entry;
+    document.getElementById("splitModalBg").classList.add("show");
+    return;
+  }
+
+  entry.reimbursement = null;
+  entry.splitAmount = null;
+  finalizeSave(entry);
+}
+
+function resolveSplit(applies){
+  document.getElementById("splitModalBg").classList.remove("show");
+  const entry = pendingSplitAmountEntry;
+  entry.splitResuelto = true;
+  if(!applies){
+    entry.reimbursement = null;
+    entry.splitAmount = null;
+    finalizeSave(entry);
+    return;
+  }
+  document.getElementById("f_splitAmount").value = entry.monto || 0;
+  document.getElementById("splitAmountModalBg").classList.add("show");
+}
+
+function closeSplitAmountModal(){
+  document.getElementById("splitAmountModalBg").classList.remove("show");
+  finalizeSave(pendingSplitAmountEntry);
+}
+
+function confirmSplitAmount(){
+  const amt = parseFloat(document.getElementById("f_splitAmount").value) || 0;
+  const entry = pendingSplitAmountEntry;
+  entry.splitAmount = amt;
+  entry.reimbursement = Math.round((amt / 5.5) * 100) / 100;
+  document.getElementById("splitAmountModalBg").classList.remove("show");
+  finalizeSave(entry);
+}
+
+function finalizeSave(entry){
+  const idx = receipts.findIndex(r => r.id === entry.id);
+  if(idx >= 0) receipts[idx] = entry; else receipts.push(entry);
+  persist();
+  render();
+  if(receipts.length % 5 === 0){ showMsg("Tip: tap 💾 Backup to save a copy of your " + receipts.length + " receipts.", false); }
+}
+
+/* ============ FLAGS / COLORS ============ */
+function isFlaggedPink(r){
+  if(r.categoria === "Client Gift") return true;
+  if(PINK_CARDS.includes(r.tarjeta)) return true;
+  if(!r.tarjeta) return true;
+  if(r.categoria === "1/5.5%" && !r.splitResuelto) return true;
+  if(!r.categoria) return true;
+  return false;
+}
+
+function rowClass(r){
+  if(r.verificado) return "flag-green";
+  if(isFlaggedPink(r)) return "flag-pink";
+  return "";
+}
+
+/* ============ ON-SCREEN TABLE ============ */
+function toggleVerified(id){
+  const r = receipts.find(x => x.id === id);
+  if(r){ r.verificado = !r.verificado; persist(); render(); }
+}
+
+function editRow(id){
+  const r = receipts.find(x => x.id === id);
+  if(r) openEditModal(r, id);
+}
+
+function deleteRow(id){
+  if(window._pendingDelete !== id){
+    window._pendingDelete = id;
+    showMsg("Tap the trash icon again to delete this receipt.", false);
+    return;
+  }
+  window._pendingDelete = null;
+  document.getElementById("msgBox").style.display = "none";
+  receipts = receipts.filter(r => r.id !== id);
+  persist();
+  render();
+}
+
+function monthKey(fecha){
+  if(!fecha) return "No date";
+  const [y,m] = fecha.split("-");
+  return `${MONTHS[parseInt(m,10)-1]} ${y}`;
+}
+
+function sortMonthKeys(keys){
+  const val = k => {
+    if(k === "No date") return 999999;
+    const [mn, y] = k.split(" ");
+    return parseInt(y,10) * 100 + MONTHS.indexOf(mn);
+  };
+  return keys.sort((a,b) => val(a) - val(b));
+}
+
+function currencyCol(r){
+  return {MXN:"mxn",USD:"usd",EUR:"eur",CHF:"chf"}[r.moneda] || null;
+}
+
+function render(){
+  const container = document.getElementById("tableContainer");
+  if(receipts.length === 0){
+    container.innerHTML = `<div class="card">No receipts yet. Use "Take photo", "Choose from gallery" or "Add manually".</div>`;
+    return;
+  }
+
+  const groups = {};
+  receipts.forEach(r => {
+    const key = monthKey(r.fecha);
+    if(!groups[key]) groups[key] = [];
+    groups[key].push(r);
+  });
+
+  const keys = sortMonthKeys(Object.keys(groups));
+
+  let html = "";
+  keys.forEach(key => {
+    html += `<div class="month-block"><div class="month-title">${key} <span class="pill">${groups[key].length} receipts</span></div>`;
+    html += `<table><thead><tr><th></th><th>Date</th><th>Card</th><th>Concept</th><th>Category</th><th>MXN</th><th>USD</th><th>EUR</th><th>CHF</th><th>Reimb.</th><th></th></tr></thead><tbody>`;
+
+    CATEGORIES.forEach(cat => {
+      const rows = groups[key].filter(r => (r.categoria || CATEGORIES[0]) === cat);
+      if(rows.length === 0) return;
+      html += `<tr class="cat-title"><td colspan="11">${catLabel(cat)}</td></tr>`;
+      let sub = {mxn:0,usd:0,eur:0,chf:0,reimb:0};
+      rows.forEach(r => {
+        const col = currencyCol(r);
+        if(col) sub[col] += r.monto;
+        if(r.reimbursement) sub.reimb += r.reimbursement;
+        html += `<tr class="${rowClass(r)}">
+          <td class="checkbox-cell"><input type="checkbox" ${r.verificado?"checked":""} onchange="toggleVerified('${r.id}')"></td>
+          <td>${r.fecha||""}</td>
+          <td>${r.tarjeta||""}</td>
+          <td>${r.concept||""}</td>
+          <td>${catLabel(r.categoria)||""}</td>
+          <td>${r.moneda==="MXN"?r.monto.toFixed(2):""}</td>
+          <td>${r.moneda==="USD"?r.monto.toFixed(2):""}</td>
+          <td>${r.moneda==="EUR"?r.monto.toFixed(2):""}</td>
+          <td>${r.moneda==="CHF"?r.monto.toFixed(2):""}</td>
+          <td>${r.reimbursement?r.reimbursement.toFixed(2):""}</td>
+          <td><button class="btn-small" onclick="editRow('${r.id}')">✏️</button> <button class="btn-small btn-danger" onclick="deleteRow('${r.id}')">🗑️</button></td>
+        </tr>`;
+      });
+      html += `<tr class="subtotal-row"><td colspan="4">Subtotal ${catLabel(cat)}</td><td></td><td>${sub.mxn?sub.mxn.toFixed(2):""}</td><td>${sub.usd?sub.usd.toFixed(2):""}</td><td>${sub.eur?sub.eur.toFixed(2):""}</td><td>${sub.chf?sub.chf.toFixed(2):""}</td><td>${sub.reimb?sub.reimb.toFixed(2):""}</td><td></td></tr>`;
+    });
+
+    html += `</tbody></table></div>`;
+  });
+
+  container.innerHTML = html;
+}
+
+/* ============ BACKUP / RESTORE ============ */
+// Backup saves every receipt (with its photo) to one .json file. Restore merges a backup file back in.
+function backupData(){
+  if(receipts.length === 0){ showMsg("Nothing to back up yet.", true); return; }
+  const payload = { app: "gpcs-receipts-2025", version: 1, saved: new Date().toISOString(), cat19Name: cat19Name, receipts: receipts };
+  const blob = new Blob([JSON.stringify(payload)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  const d = new Date().toISOString().slice(0,10);
+  a.download = "GPCS_Backup_2025_" + d + ".json";
+  a.click();
+  URL.revokeObjectURL(url);
+  showMsg("Backup saved: " + receipts.length + " receipts.", false);
+}
+
+function restoreData(ev){
+  const file = ev.target.files[0];
+  if(!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try{
+      const data = JSON.parse(reader.result);
+      const list = Array.isArray(data) ? data : data.receipts;
+      if(!Array.isArray(list)) throw new Error("This file is not a backup.");
+      let added = 0, updated = 0;
+      list.forEach(r => {
+        if(!r.id) r.id = Date.now() + Math.random().toString(36).slice(2);
+        const idx = receipts.findIndex(x => x.id === r.id);
+        if(idx >= 0){ receipts[idx] = r; updated++; } else { receipts.push(r); added++; }
+      });
+      if(data.cat19Name && cat19Name === "Unnamed"){ cat19Name = data.cat19Name; store.set(CAT19_KEY, cat19Name); }
+      persist();
+      document.getElementById("f_categoria").innerHTML = CATEGORIES.map(c => `<option value="${c}">${catLabel(c)}</option>`).join("");
+      render();
+      showMsg("Restored: " + added + " added, " + updated + " updated.", false);
+    }catch(err){
+      showMsg("Couldn't restore: " + err.message, true);
+    }
+  };
+  reader.readAsText(file);
+  ev.target.value = "";
+}
+
+/* ============ EXCEL EXPORT ============ */
+async function exportExcel(){
+  if(receipts.length === 0){ showMsg("No receipts to export.", true); return; }
+  const wb = new ExcelJS.Workbook();
+  const pinkFill = { type:"pattern", pattern:"solid", fgColor:{argb:"FFF8BBD0"} };
+  const greenFill = { type:"pattern", pattern:"solid", fgColor:{argb:"FFC8E6C9"} };
+  const catFill = { type:"pattern", pattern:"solid", fgColor:{argb:"FFECEFF1"} };
+  const subFill = { type:"pattern", pattern:"solid", fgColor:{argb:"FFCFD8DC"} };
+  const headers = ["","Date","Card","Concept","Category","MXN","USD","EUR","CHF","Reimbursement","Note"];
+
+  function buildMonthSheet(name, rows){
+    const ws = wb.addWorksheet(name.substring(0,31));
+    ws.mergeCells("A1:K1");
+    ws.getCell("A1").value = `GPC&S GmbH — ${name} Reconciliation`;
+    ws.getCell("A1").font = { bold:true, size:13 };
+    ws.addRow([]);
+    const headerRow = ws.addRow(headers);
+    headerRow.font = { bold:true };
+    headerRow.eachCell(c => c.fill = catFill);
+    ws.views = [{ state:"frozen", ySplit: 3 }];
+    ws.columns = [{width:4},{width:11},{width:10},{width:26},{width:20},{width:11},{width:11},{width:11},{width:11},{width:13},{width:24}];
+
+    let grand = {mxn:0,usd:0,eur:0,chf:0,reimb:0};
+
+    CATEGORIES.forEach(cat => {
+      const catRows = rows.filter(r => (r.categoria || CATEGORIES[0]) === cat);
+      if(catRows.length === 0) return;
+      const catRow = ws.addRow([catLabel(cat)]);
+      ws.mergeCells(`A${catRow.number}:K${catRow.number}`);
+      catRow.eachCell(c => { c.fill = catFill; c.font = { bold:true }; });
+
+      let sub = {mxn:0,usd:0,eur:0,chf:0,reimb:0};
+      catRows.forEach(r => {
+        const col = currencyCol(r);
+        if(col) sub[col] += r.monto;
+        if(r.reimbursement) sub.reimb += r.reimbursement;
+        const row = ws.addRow([
+          r.verificado ? "✓" : "",
+          r.fecha, r.tarjeta, r.concept, catLabel(r.categoria),
+          r.moneda==="MXN"?r.monto:null,
+          r.moneda==="USD"?r.monto:null,
+          r.moneda==="EUR"?r.monto:null,
+          r.moneda==="CHF"?r.monto:null,
+          r.reimbursement||null,
+          r.note||""
+        ]);
+        if(r.verificado) row.eachCell(c => c.fill = greenFill);
+        else if(isFlaggedPink(r)) row.eachCell(c => c.fill = pinkFill);
+      });
+      const subRow = ws.addRow(["","","","",`Subtotal ${catLabel(cat)}`,sub.mxn||null,sub.usd||null,sub.eur||null,sub.chf||null,sub.reimb||null,""]);
+      subRow.eachCell(c => { c.fill = subFill; c.font = { bold:true }; });
+      grand.mxn+=sub.mxn; grand.usd+=sub.usd; grand.eur+=sub.eur; grand.chf+=sub.chf; grand.reimb+=sub.reimb;
+    });
+
+    const grandRow = ws.addRow(["","","","","GRAND TOTAL",grand.mxn||null,grand.usd||null,grand.eur||null,grand.chf||null,grand.reimb||null,""]);
+    grandRow.eachCell(c => { c.font = { bold:true, size:12 }; c.border = { top:{style:"double"} }; });
+  }
+
+  // month sheets (excludes 0195)
+  const byMonth = {};
+  receipts.filter(r => r.tarjeta !== "0195").forEach(r => {
+    const key = monthKey(r.fecha);
+    if(!byMonth[key]) byMonth[key] = [];
+    byMonth[key].push(r);
+  });
+  sortMonthKeys(Object.keys(byMonth)).forEach(key => buildMonthSheet(key, byMonth[key]));
+
+  // 6320 Reimbursements sheet
+  const card6320 = receipts.filter(r => r.tarjeta === "6320");
+  if(card6320.length){
+    const ws = wb.addWorksheet("6320 Reimbursements");
+    ws.addRow(["Date","Concept","Receipt amount","Currency","Amount applied to split","Reimbursement (÷5.5)","Month","Note"]).font = {bold:true};
+    ws.columns = [{width:12},{width:28},{width:13},{width:9},{width:18},{width:18},{width:14},{width:24}];
+    let total = 0;
+    card6320.forEach(r => {
+      ws.addRow([r.fecha, r.concept, r.monto, r.moneda, r.splitAmount||"", r.reimbursement||"", monthKey(r.fecha), r.note||""]);
+      total += r.reimbursement || 0;
+    });
+    const tRow = ws.addRow(["","","","","","TOTAL",total]);
+    tRow.font = { bold:true };
+  }
+
+  // Canadian Card Payments sheet
+  const cad = receipts.filter(r => r.tarjeta === "0195");
+  if(cad.length){
+    const ws = wb.addWorksheet("Canadian Card Payments");
+    ws.addRow(["Date","Concept","Amount","Currency","Note"]).font = {bold:true};
+    ws.columns = [{width:12},{width:28},{width:12},{width:9},{width:24}];
+    cad.forEach(r => ws.addRow([r.fecha, r.concept, r.monto, r.moneda, r.note||""]));
+  }
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `GPCS_Reconciliation_2025.xlsx`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ============ DOWNLOAD ALL PHOTOS (ZIP) ============ */
+// Each photo is named after its concept (vendor, city); the date is appended only to keep names unique and sortable.
+async function downloadAllPhotos(){
+  const withPhotos = receipts.filter(r => r.photo);
+  if(withPhotos.length === 0){
+    showMsg("No receipt photos stored yet. Photos are saved automatically when you use 'Take photo' or 'Choose from gallery' (not with 'Add manually').", true);
+    return;
+  }
+  const zip = new JSZip();
+  const usedNames = {};
+  withPhotos.forEach(r => {
+    const monthFolder = monthKey(r.fecha).replace(" ", "_");
+    const safeConcept = (r.concept || "receipt").trim().replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").slice(0, 40) || "receipt";
+    let base = `${safeConcept}_${r.fecha || "no_date"}`;
+    let name = `${base}.jpg`;
+    let n = 1;
+    while(usedNames[`${monthFolder}/${name}`]){
+      n++;
+      name = `${base}_${n}.jpg`;
+    }
+    usedNames[`${monthFolder}/${name}`] = true;
+    const base64 = r.photo.split(",")[1];
+    zip.folder(monthFolder).file(name, base64, { base64: true });
+  });
+
+  const blob = await zip.generateAsync({ type: "blob" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `GPCS_Receipt_Photos_2025.zip`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+</script>
+</body>
+</html>
